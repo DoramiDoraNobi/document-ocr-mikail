@@ -1,0 +1,93 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    const formData = new FormData(e.currentTarget);
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Gagal login. Silakan coba lagi.");
+      }
+
+      // Berhasil login, redirect ke dashboard
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#f9fafb", padding: "24px" }}>
+      <div style={{ backgroundColor: "#fff", padding: "40px", borderRadius: "12px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)", width: "100%", maxWidth: "400px" }}>
+        <h1 style={{ fontSize: "28px", fontWeight: 800, color: "#1f2937", textAlign: "center", marginBottom: "8px" }}>Selamat Datang</h1>
+        <p style={{ fontSize: "14px", color: "#6b7280", textAlign: "center", marginBottom: "32px" }}>Silakan login ke akun Smart Document Reader Anda.</p>
+        
+        {error && (
+          <div style={{ backgroundColor: "#fef2f2", color: "#b91c1c", padding: "12px", borderRadius: "8px", fontSize: "14px", marginBottom: "20px", border: "1px solid #fca5a5" }}>
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          <div>
+            <label style={{ display: "block", fontSize: "14px", fontWeight: 600, color: "#374151", marginBottom: "8px" }}>Email</label>
+            <input 
+              type="email" 
+              name="email" 
+              required 
+              placeholder="nama@email.com"
+              style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "14px", outline: "none", boxSizing: "border-box" }} 
+            />
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: "14px", fontWeight: 600, color: "#374151", marginBottom: "8px" }}>Password</label>
+            <input 
+              type="password" 
+              name="password" 
+              required 
+              placeholder="••••••••"
+              style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "14px", outline: "none", boxSizing: "border-box" }} 
+            />
+          </div>
+          
+          <button 
+            type="submit" 
+            disabled={loading}
+            style={{ width: "100%", padding: "14px", backgroundColor: "#2563eb", color: "#fff", fontWeight: 600, border: "none", borderRadius: "8px", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1, marginTop: "8px", fontSize: "15px" }}
+          >
+            {loading ? "Memproses..." : "Masuk"}
+          </button>
+        </form>
+
+        <p style={{ marginTop: "24px", textAlign: "center", fontSize: "14px", color: "#6b7280" }}>
+          Belum punya akun? <Link href="/register" style={{ color: "#2563eb", fontWeight: 600, textDecoration: "none" }}>Daftar sekarang</Link>
+        </p>
+      </div>
+    </main>
+  );
+}

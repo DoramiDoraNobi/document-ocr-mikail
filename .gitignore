@@ -30,8 +30,13 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env and wrangler secrets (SANGAT PENTING!)
 .env*
+.dev.vars
+.dev.vars.local
+
+# wrangler / cloudflare state
+.wrangler/
 
 # vercel
 .vercel
