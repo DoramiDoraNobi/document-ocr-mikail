@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getEnv } from "@/lib/env";
 
 export async function POST(req: Request) {
   try {
@@ -20,10 +21,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
-    const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
-    const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
-    const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
+    const CF_ACCOUNT_ID = getEnv("CF_ACCOUNT_ID");
+    const R2_ACCESS_KEY_ID = getEnv("R2_ACCESS_KEY_ID");
+    const R2_SECRET_ACCESS_KEY = getEnv("R2_SECRET_ACCESS_KEY");
+    const R2_BUCKET_NAME = getEnv("R2_BUCKET_NAME");
 
     if (!CF_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME) {
       return NextResponse.json({ error: "Konfigurasi server salah." }, { status: 500 });

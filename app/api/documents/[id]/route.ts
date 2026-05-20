@@ -5,12 +5,13 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getRequestContext } from "@cloudflare/next-on-pages";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
+import { getEnv } from "@/lib/env";
 
 // Helper untuk inisialisasi S3 Client
 function getS3Client() {
-  const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
-  const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
-  const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
+  const CF_ACCOUNT_ID = getEnv("CF_ACCOUNT_ID");
+  const R2_ACCESS_KEY_ID = getEnv("R2_ACCESS_KEY_ID");
+  const R2_SECRET_ACCESS_KEY = getEnv("R2_SECRET_ACCESS_KEY");
 
   if (!CF_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
     throw new Error("Missing R2 environment variables");
@@ -59,7 +60,7 @@ export async function GET(
     try {
       const S3 = getS3Client();
       const command = new GetObjectCommand({
-        Bucket: process.env.R2_BUCKET_NAME,
+        Bucket: getEnv("R2_BUCKET_NAME"),
         Key: doc.file_key as string,
       });
       // Berlaku selama 10 menit (600 detik)

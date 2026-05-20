@@ -11,9 +11,11 @@
 
 import { SignJWT, jwtVerify } from "jose";
 
+import { getEnv } from "./env";
+
 // JWT Secret key — di production harus dari environment variable
 function getJwtSecret(): Uint8Array {
-  const secret = process.env.JWT_SECRET || "smart-doc-reader-default-secret-change-in-prod-2026";
+  const secret = getEnv("JWT_SECRET") || "smart-doc-reader-default-secret-change-in-prod-2026";
   return new TextEncoder().encode(secret);
 }
 

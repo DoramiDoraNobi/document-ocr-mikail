@@ -1,3 +1,5 @@
+import { getEnv } from "./env";
+
 export async function extractDocumentData(base64Image: string, mimeType: string = "image/jpeg", customSchema?: string) {
   const systemPrompt = `
     Anda adalah sistem ekstraktor JSON murni dan pengklasifikasi dokumen keuangan otomatis.
@@ -66,7 +68,7 @@ ${dynamicFields},
 
   // Get the OPENROUTER_API_KEY from environment or Cloudflare context
   // In Next.js edge runtime, we can access process.env.OPENROUTER_API_KEY
-  const apiKey = process.env.OPENROUTER_API_KEY || "";
+  const apiKey = getEnv("OPENROUTER_API_KEY") || "";
 
   if (!apiKey) {
     throw new Error("OPENROUTER_API_KEY is not configured");
