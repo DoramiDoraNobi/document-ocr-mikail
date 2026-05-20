@@ -5,6 +5,7 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { v4 as uuidv4 } from "uuid";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
+import { getRequestContext } from "@cloudflare/next-on-pages";
 
 export async function POST(req: Request) {
   try {
@@ -73,12 +74,15 @@ export async function POST(req: Request) {
     
     const finalConfidence = fieldCount > 0 ? avgConfidence / fieldCount : 0;
 
-    // Ambil document_type dan payment_method yang diklasifikasikan AI
+    // Ambil document_type, payment_method, dan category yang diklasifikasikan AI
     const documentType = extractedJson.document_type?.value || "other";
     const paymentMethod = extractedJson.payment_method?.value || "other";
+    let category = extractedJson.category?.value || "Uncategorized";
+    const referenceNumber = extractedJson.reference_number?.value || "";
 
     // 3. Simpan hasil ke D1 Database
-    const db = process.env.DB;
+    const { env } = getRequestContext();
+    const db = env.DB;
     if (db) {
       const docId = uuidv4();
       const userId = user.userId;
@@ -86,10 +90,50 @@ export async function POST(req: Request) {
       const lineItemsString = extractedJson.line_items ? JSON.stringify(extractedJson.line_items) : null;
       const vendorName = extractedJson.vendor?.value || "";
 
-      // Simpan dokumen dengan document_type dan payment_method
+      const dateStr = extractedJson.date?.value || "";
+      const totalAmt = extractedJson.total_amount?.value || 0;
+      let isDuplicate = 0;
+
+      // Cek apakah sudah ada template untuk vendor yang sama
+      let defaultCategory = category;
+      if (vendorName) {
+        const existingTemplate = await db.prepare(`
+          SELECT id, usage_count, default_category FROM document_templates 
+          WHERE user_id = ? AND LOWER(vendor_pattern) = LOWER(?) AND document_type = ?
+        `).bind(userId, vendorName, documentType).first<{id: string, usage_count: number, default_category: string}>();
+        
+        if (existingTemplate && existingTemplate.default_category) {
+            // Jika ada template dan punya default_category, kita utamakan default_category dari template 
+            // agar konsisten.
+            category = existingTemplate.default_category;
+        }
+
+      // DETEKSI DUPLIKAT
+      if (vendorName && dateStr && totalAmt > 0) {
+        const queryParams = [userId, vendorName, dateStr, totalAmt];
+        let queryStr = `
+          SELECT id FROM documents
+          WHERE user_id = ? 
+            AND LOWER(vendor) = LOWER(?)
+            AND date = ?
+            AND total_amount = ?
+        `;
+        if (referenceNumber) {
+          queryStr += ` AND LOWER(reference_number) = LOWER(?)`;
+          queryParams.push(referenceNumber);
+        }
+        queryStr += ` LIMIT 1`;
+
+        const dupCheck = await db.prepare(queryStr).bind(...queryParams).first();
+        if (dupCheck) {
+          isDuplicate = 1;
+        }
+      }
+
+      // Simpan dokumen dengan document_type, payment_method, category, reference_number, is_duplicate
       await db.prepare(`
-        INSERT INTO documents (id, user_id, file_key, status, document_type, vendor, date, subtotal, tax_amount, total_amount, currency, payment_method, line_items, ai_confidence_score, raw_ai_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO documents (id, user_id, file_key, status, document_type, vendor, date, subtotal, tax_amount, total_amount, currency, payment_method, category, reference_number, is_duplicate, line_items, ai_confidence_score, raw_ai_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         docId,
         userId,
@@ -97,34 +141,32 @@ export async function POST(req: Request) {
         'PENDING',
         documentType,
         vendorName,
-        extractedJson.date?.value || "",
+        dateStr,
         extractedJson.subtotal?.value || null,
         extractedJson.tax_amount?.value || null,
-        extractedJson.total_amount?.value || 0,
+        totalAmt,
         extractedJson.currency?.value || "",
         paymentMethod,
+        category,
+        referenceNumber,
+        isDuplicate,
         lineItemsString,
         finalConfidence,
         rawJsonString
       ).run();
 
-      // 4. Auto-create atau update Template berdasarkan vendor
-      // Cek apakah sudah ada template untuk vendor yang sama
-      if (vendorName) {
-        const existingTemplate = await db.prepare(`
-          SELECT id, usage_count FROM document_templates 
-          WHERE user_id = ? AND LOWER(vendor_pattern) = LOWER(?)
-        `).bind(userId, vendorName).first();
-
+      // 4. Auto-create atau update Template berdasarkan vendor + document_type
+      // Satu vendor bisa punya beberapa template jika document_type berbeda
+      // Contoh: "Tokopedia receipt" dan "Tokopedia invoice" = 2 template terpisah
         if (existingTemplate) {
-          // Template sudah ada, tambahkan usage_count
+          // Template untuk vendor + document_type ini sudah ada, tambahkan usage_count
           await db.prepare(`
             UPDATE document_templates 
             SET usage_count = usage_count + 1, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
           `).bind(existingTemplate.id).run();
         } else {
-          // Buat template baru otomatis
+          // Buat template baru untuk kombinasi vendor + document_type ini
           const templateId = uuidv4();
           // Kumpulkan nama-nama field yang berhasil diekstrak AI (untuk disimpan sebagai schema)
           const extractedFieldNames = Object.keys(extractedJson).filter(
@@ -134,17 +176,43 @@ export async function POST(req: Request) {
           const templateName = `${vendorName} ${documentType}`.trim();
 
           await db.prepare(`
-            INSERT INTO document_templates (id, user_id, template_name, document_type, vendor_pattern, field_schema)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO document_templates (id, user_id, template_name, document_type, vendor_pattern, default_category, field_schema)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
           `).bind(
             templateId,
             userId,
             templateName,
             documentType,
             vendorName,
+            defaultCategory,
             fieldSchemaString
           ).run();
         }
+      } else {
+         // Fallback simpan dokumen jika tidak ada vendorName
+         await db.prepare(`
+            INSERT INTO documents (id, user_id, file_key, status, document_type, vendor, date, subtotal, tax_amount, total_amount, currency, payment_method, category, reference_number, is_duplicate, line_items, ai_confidence_score, raw_ai_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            docId,
+            userId,
+            fileKey,
+            'PENDING',
+            documentType,
+            vendorName,
+            dateStr,
+            extractedJson.subtotal?.value || null,
+            extractedJson.tax_amount?.value || null,
+            totalAmt,
+            extractedJson.currency?.value || "",
+            paymentMethod,
+            category,
+            referenceNumber,
+            isDuplicate,
+            lineItemsString,
+            finalConfidence,
+            rawJsonString
+          ).run();
       }
 
       return NextResponse.json({ 
@@ -152,6 +220,7 @@ export async function POST(req: Request) {
         documentId: docId, 
         documentType,
         paymentMethod,
+        category,
         data: extractedJson 
       });
     }
@@ -161,8 +230,9 @@ export async function POST(req: Request) {
       data: extractedJson 
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Proses Ekstraksi Error:", error);
-    return NextResponse.json({ error: error.message || "Terjadi kesalahan internal saat pemrosesan." }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Terjadi kesalahan internal saat pemrosesan.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

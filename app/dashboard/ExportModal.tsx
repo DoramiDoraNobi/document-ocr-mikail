@@ -29,7 +29,12 @@ const PAYMENT_OPTIONS = [
   { value: "qris", label: "QRIS" },
 ];
 
-export default function ExportModal({ documentTypes }: { documentTypes: string[] }) {
+interface ExportModalProps {
+  documentTypes: string[];
+  vendorList: string[];
+}
+
+export default function ExportModal({ documentTypes, vendorList }: ExportModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [filters, setFilters] = useState({
@@ -60,6 +65,17 @@ export default function ExportModal({ documentTypes }: { documentTypes: string[]
     window.location.href = url;
     setIsOpen(false);
   };
+
+  const handleReset = () => {
+    setFilters({ type: "", status: "", vendor: "", from: "", to: "", payment: "", items: false });
+  };
+
+  // Style constants
+  const labelStyle: React.CSSProperties = { display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "4px" };
+  const selectStyle: React.CSSProperties = { width: "100%", border: "1px solid #d1d5db", borderRadius: "8px", padding: "10px", fontSize: "13px", color: "#374151", outline: "none", backgroundColor: "#fff" };
+  const inputStyle: React.CSSProperties = { width: "100%", border: "1px solid #d1d5db", borderRadius: "8px", padding: "10px", fontSize: "13px", color: "#374151", outline: "none", boxSizing: "border-box" as const };
+
+  const hasActiveFilters = filters.type || filters.status || filters.vendor || filters.from || filters.to || filters.payment;
 
   const modalContent = isOpen ? (
     <div
@@ -109,11 +125,11 @@ export default function ExportModal({ documentTypes }: { documentTypes: string[]
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {/* Jenis Dokumen */}
           <div>
-            <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>Jenis Dokumen</label>
+            <label style={labelStyle}>Jenis Dokumen</label>
             <select
               value={filters.type}
               onChange={(e) => setFilters({ ...filters, type: e.target.value })}
-              style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: "8px", padding: "10px", fontSize: "13px", color: "#374151", outline: "none" }}
+              style={selectStyle}
             >
               {DOCUMENT_TYPE_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -129,13 +145,33 @@ export default function ExportModal({ documentTypes }: { documentTypes: string[]
             )}
           </div>
 
+          {/* Vendor / Merchant - DROPDOWN */}
+          <div>
+            <label style={labelStyle}>Vendor / Merchant</label>
+            <select
+              value={filters.vendor}
+              onChange={(e) => setFilters({ ...filters, vendor: e.target.value })}
+              style={selectStyle}
+            >
+              <option value="">Semua Vendor</option>
+              {vendorList.map(v => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+            {vendorList.length > 0 && (
+              <p style={{ fontSize: "11px", color: "#9ca3af", marginTop: "4px" }}>
+                {vendorList.length} vendor tersedia
+              </p>
+            )}
+          </div>
+
           {/* Status */}
           <div>
-            <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>Status</label>
+            <label style={labelStyle}>Status</label>
             <select
               value={filters.status}
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-              style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: "8px", padding: "10px", fontSize: "13px", color: "#374151", outline: "none" }}
+              style={selectStyle}
             >
               {STATUS_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -145,11 +181,11 @@ export default function ExportModal({ documentTypes }: { documentTypes: string[]
 
           {/* Metode Pembayaran */}
           <div>
-            <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>Metode Pembayaran</label>
+            <label style={labelStyle}>Metode Pembayaran</label>
             <select
               value={filters.payment}
               onChange={(e) => setFilters({ ...filters, payment: e.target.value })}
-              style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: "8px", padding: "10px", fontSize: "13px", color: "#374151", outline: "none" }}
+              style={selectStyle}
             >
               {PAYMENT_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -157,36 +193,24 @@ export default function ExportModal({ documentTypes }: { documentTypes: string[]
             </select>
           </div>
 
-          {/* Vendor */}
-          <div>
-            <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>Vendor / Merchant</label>
-            <input
-              type="text"
-              placeholder="Contoh: Tokopedia, Starbucks..."
-              value={filters.vendor}
-              onChange={(e) => setFilters({ ...filters, vendor: e.target.value })}
-              style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: "8px", padding: "10px", fontSize: "13px", color: "#374151", outline: "none", boxSizing: "border-box" }}
-            />
-          </div>
-
           {/* Rentang Tanggal */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div>
-              <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>Dari Tanggal</label>
+              <label style={labelStyle}>Dari Tanggal</label>
               <input
                 type="date"
                 value={filters.from}
                 onChange={(e) => setFilters({ ...filters, from: e.target.value })}
-                style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: "8px", padding: "10px", fontSize: "13px", color: "#374151", outline: "none", boxSizing: "border-box" }}
+                style={inputStyle}
               />
             </div>
             <div>
-              <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>Sampai Tanggal</label>
+              <label style={labelStyle}>Sampai Tanggal</label>
               <input
                 type="date"
                 value={filters.to}
                 onChange={(e) => setFilters({ ...filters, to: e.target.value })}
-                style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: "8px", padding: "10px", fontSize: "13px", color: "#374151", outline: "none", boxSizing: "border-box" }}
+                style={inputStyle}
               />
             </div>
           </div>
@@ -203,7 +227,7 @@ export default function ExportModal({ documentTypes }: { documentTypes: string[]
             <label htmlFor="includeItems" style={{ cursor: "pointer", fontSize: "13px", color: "#374151" }}>
               <span style={{ fontWeight: 600 }}>Sertakan rincian item per baris</span>
               <br />
-              <span style={{ fontSize: "11px", color: "#6b7280" }}>Setiap item di dalam dokumen akan menjadi baris terpisah di CSV (format Dext-style)</span>
+              <span style={{ fontSize: "11px", color: "#6b7280" }}>Setiap item di dalam dokumen akan menjadi baris terpisah di CSV (format detail)</span>
             </label>
           </div>
         </div>
@@ -216,8 +240,18 @@ export default function ExportModal({ documentTypes }: { documentTypes: string[]
             onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#15803d")}
             onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#16a34a")}
           >
-            Download CSV
+            📥 Download CSV
           </button>
+          {hasActiveFilters && (
+            <button
+              onClick={handleReset}
+              style={{ padding: "12px 16px", backgroundColor: "#fef2f2", color: "#dc2626", fontWeight: 600, borderRadius: "8px", border: "1px solid #fecaca", cursor: "pointer", fontSize: "13px" }}
+              onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#fee2e2")}
+              onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#fef2f2")}
+            >
+              Reset
+            </button>
+          )}
           <button
             onClick={() => setIsOpen(false)}
             style={{ padding: "12px 24px", backgroundColor: "#f3f4f6", color: "#374151", fontWeight: 600, borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "14px" }}

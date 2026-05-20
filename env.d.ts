@@ -1,4 +1,9 @@
 declare global {
+  /** Cloudflare Pages/Workers bindings (used by @cloudflare/next-on-pages getRequestContext().env) */
+  interface CloudflareEnv {
+    DB: D1Database;
+  }
+
   namespace NodeJS {
     interface ProcessEnv {
       DB: D1Database;
@@ -9,6 +14,12 @@ declare global {
       CF_ACCOUNT_ID: string;
       R2_BUCKET_NAME: string;
     }
+  }
+}
+
+declare module "@cloudflare/next-on-pages" {
+  interface CloudflareEnv {
+    DB: D1Database;
   }
 }
 

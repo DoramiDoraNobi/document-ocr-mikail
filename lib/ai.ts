@@ -11,7 +11,9 @@ export async function extractDocumentData(base64Image: string, mimeType: string 
   
   let schemaFormat = `{
       "document_type": {"value": "receipt", "confidence": 0.9},
+      "category": {"value": "Makanan & Minuman", "confidence": 0.9},
       "vendor": {"value": "Nama Vendor/Toko/Perusahaan", "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 20}},
+      "reference_number": {"value": "INV-123/Nomor Struk", "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 20}},
       "date": {"value": "YYYY-MM-DD", "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 20}},
       "subtotal": {"value": 90000, "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 20}},
       "tax_amount": {"value": 10000, "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 20}},
@@ -29,7 +31,9 @@ export async function extractDocumentData(base64Image: string, mimeType: string 
       const dynamicFields = fields.map(f => `      "${f}": {"value": "Hasil Ekstraksi", "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 20}}`).join(",\n");
       schemaFormat = `{
       "document_type": {"value": "receipt", "confidence": 0.9},
+      "category": {"value": "Makanan & Minuman", "confidence": 0.9},
       "vendor": {"value": "Nama Vendor", "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 20}},
+      "reference_number": {"value": "INV-123/Nomor Struk", "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 20}},
       "date": {"value": "YYYY-MM-DD", "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 20}},
       "subtotal": {"value": 90000, "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 20}},
       "tax_amount": {"value": 10000, "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 20}},
@@ -50,7 +54,9 @@ ${dynamicFields},
     
     INSTRUKSI KLASIFIKASI OTOMATIS:
     1. "document_type" WAJIB diisi salah satu dari: "receipt" (struk/resi belanja), "invoice" (tagihan/faktur), "nota" (nota manual/toko kecil), "kwitansi" (bukti penerimaan uang), "faktur_pajak" (faktur dengan NPWP/nomor seri pajak), "other" (lainnya). Tentukan berdasarkan format visual dan isi dokumen.
-    2. "payment_method" WAJIB diisi salah satu dari: "cash" (tunai), "debit" (kartu debit), "credit_card" (kartu kredit), "transfer" (transfer bank), "ewallet" (GoPay/OVO/Dana/ShopeePay/dll), "qris" (pembayaran QRIS), "other" (lainnya/tidak terdeteksi). Jika tidak tertulis di dokumen, isi "other" dengan confidence rendah.
+    2. "category" WAJIB diisi dengan SATU kategori pengeluaran yang paling cocok dari daftar ini: "Makanan & Minuman", "Transportasi & Perjalanan", "Perlengkapan Kantor", "Utilitas & Tagihan", "Layanan Profesional", "Aset & Peralatan", "Pemasaran & Iklan", "Lainnya". Analisis dari nama vendor dan deskripsi item untuk menentukan kategori yang paling tepat.
+    3. "payment_method" WAJIB diisi salah satu dari: "cash" (tunai), "debit" (kartu debit), "credit_card" (kartu kredit), "transfer" (transfer bank), "ewallet" (GoPay/OVO/Dana/ShopeePay/dll), "qris" (pembayaran QRIS), "other" (lainnya/tidak terdeteksi). Jika tidak tertulis di dokumen, isi "other" dengan confidence rendah.
+    4. "reference_number" WAJIB diisi dengan Nomor Invoice / Nomor Struk / Nomor Referensi / Nomor Transaksi yang ada di dokumen. Jika tidak ada sama sekali, isi string kosong "".
     
     PENTING:
     - Beri confidence < 0.7 jika gambar buram/sulit dibaca.

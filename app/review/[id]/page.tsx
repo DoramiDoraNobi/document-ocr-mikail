@@ -12,6 +12,8 @@ const ConfidenceBadge = ({ score }: { score: number }) => {
 
 const initialData = {
   document_type: { value: "other", confidence: 1.0 },
+  category: { value: "Uncategorized", confidence: 1.0 },
+  reference_number: { value: "", confidence: 1.0 },
   vendor: { value: "", confidence: 1.0 },
   date: { value: "", confidence: 1.0 },
   subtotal: { value: 0, confidence: 1.0 },
@@ -22,12 +24,16 @@ const initialData = {
   line_items: [] as any[]
 };
 
+type FormData = Record<string, any>;
+
 export default function ReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const id = resolvedParams.id;
   const router = useRouter();
 
-  const [formData, setFormData] = useState(initialData);
+  const [originalDocument, setOriginalDocument] = useState<any>(null);
+  const [formData, setFormData] = useState<FormData>(initialData);
+  const [isDuplicate, setIsDuplicate] = useState(0);
   const [viewUrl, setViewUrl] = useState<string>("");
   const [fileKey, setFileKey] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
@@ -46,6 +52,9 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         const doc = data.document;
 
         if (doc) {
+          setOriginalDocument(doc);
+          setIsDuplicate(doc.is_duplicate || 0);
+
           const raw = doc.raw_ai_json || {};
           const finalData = doc.final_json || raw;
           
@@ -293,6 +302,18 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
             className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold px-4 py-3 rounded transition"
           >
             {saving ? "Menyimpan..." : "Konfirmasi & Verifikasi"}
+          </button>
+
+          <button
+            onClick={() => {
+              window.location.href = `/api/export?id=${id}`;
+            }}
+            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold px-4 py-2 rounded transition border border-emerald-200 flex items-center justify-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export CSV Dokumen Ini
           </button>
           
           <button 

@@ -82,6 +82,9 @@ export async function GET(
         total_amount: doc.total_amount,
         currency: doc.currency,
         payment_method: doc.payment_method,
+        category: doc.category,
+        reference_number: doc.reference_number,
+        is_duplicate: doc.is_duplicate,
         line_items: doc.line_items ? JSON.parse(doc.line_items as string) : [],
         ai_confidence_score: doc.ai_confidence_score,
         raw_ai_json: doc.raw_ai_json ? JSON.parse(doc.raw_ai_json as string) : null,
@@ -125,13 +128,16 @@ export async function PUT(
     const date = body.date?.value || body.tanggal?.value || "";
     const total_amount = parseFloat(body.total_amount?.value || 0);
     const currency = body.currency?.value || "";
+    const category = body.category?.value || "Uncategorized";
+    const reference_number = body.reference_number?.value || "";
+    const is_duplicate = 0; // Bersihkan flag duplikat saat diverifikasi manual
 
     // Simpan seluruh state dynamic form ke final_json
     const finalJsonString = JSON.stringify(body);
 
     await db.prepare(`
       UPDATE documents
-      SET vendor = ?, date = ?, total_amount = ?, currency = ?, status = ?, final_json = ?
+      SET vendor = ?, date = ?, total_amount = ?, currency = ?, status = ?, category = ?, reference_number = ?, is_duplicate = ?, final_json = ?
       WHERE id = ? AND user_id = ?
     `).bind(
       vendor,
@@ -139,6 +145,9 @@ export async function PUT(
       total_amount,
       currency,
       status,
+      category,
+      reference_number,
+      is_duplicate,
       finalJsonString,
       id,
       user.userId

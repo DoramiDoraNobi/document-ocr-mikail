@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS documents (
     line_items TEXT, -- Menyimpan JSON array dari detail item
     ai_confidence_score REAL,
     raw_ai_json TEXT,
+    category TEXT DEFAULT 'Uncategorized',
+    reference_number TEXT,
+    is_duplicate INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id)
 );
@@ -34,8 +37,10 @@ CREATE TABLE IF NOT EXISTS document_templates (
     document_type TEXT NOT NULL, -- 'receipt', 'invoice', dll.
     vendor_pattern TEXT, -- Nama vendor yang cocok (case-insensitive match)
     field_schema TEXT NOT NULL, -- JSON array of field names yang harus diekstrak
+    default_category TEXT, -- Kategori default yang akan di-assign ke dokumen vendor ini
     usage_count INTEGER DEFAULT 1, -- Berapa kali template ini dipakai
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_id) REFERENCES users(id)
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    UNIQUE(user_id, vendor_pattern, document_type) -- Satu vendor bisa punya template berbeda per jenis dokumen
 );

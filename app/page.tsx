@@ -4,78 +4,83 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function Home() {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [customFields, setCustomFields] = useState("");
   const router = useRouter();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFile(e.target.files?.[0] || null);
+    if (e.target.files) {
+      setFiles(Array.from(e.target.files));
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(files.filter((_, i) => i !== index));
   };
 
   const handleUpload = async () => {
-    if (!file) {
+    if (files.length === 0) {
       alert("Pilih file terlebih dahulu");
       return;
     }
 
     try {
       setLoading(true);
-      setStatus("1/3: Meminta akses upload ke penyimpanan aman...");
       
-      // 1. Dapatkan Presigned URL
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileType: file.type, fileSize: file.size }),
-      });
-      
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Gagal mendapatkan URL upload");
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setStatus(`[${i + 1}/${files.length}] Meminta akses untuk: ${file.name}...`);
+        
+        // 1. Dapatkan Presigned URL
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileType: file.type, fileSize: file.size }),
+        });
+        
+        if (!res.ok) {
+          throw new Error("Gagal mendapatkan URL upload");
+        }
+
+        const { uploadUrl, fileKey } = await res.json();
+
+        setStatus(`[${i + 1}/${files.length}] Mengunggah dokumen...`);
+        
+        // 2. Upload file langsung ke R2
+        const uploadRes = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type,
+          },
+          body: file,
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error("Gagal mengunggah file ke Cloudflare R2");
+        }
+
+        setStatus(`[${i + 1}/${files.length}] Memproses dengan AI... (Bisa memakan waktu)`);
+        
+        // 3. Proses menggunakan AI
+        const processRes = await fetch("/api/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileKey, customFields: customFields.trim() }),
+        });
+
+        if (!processRes.ok) {
+          throw new Error("Gagal memproses dokumen dengan AI");
+        }
       }
-
-      const { uploadUrl, fileKey } = await res.json();
-
-      setStatus("2/3: Mengunggah dokumen...");
       
-      // 2. Upload file langsung ke R2
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": file.type,
-        },
-        body: file,
-      });
-
-      if (!uploadRes.ok) {
-        throw new Error("Gagal mengunggah file ke Cloudflare R2");
-      }
-
-      setStatus("3/3: Memproses dokumen dengan AI...");
+      setStatus("Selesai memproses semua dokumen! Mengalihkan ke Dashboard...");
       
-      // 3. Proses menggunakan OpenRouter (Qwen2.5 VL)
-      const processRes = await fetch("/api/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileKey, customFields: customFields.trim() }),
-      });
-
-      if (!processRes.ok) {
-        throw new Error("Gagal memproses dokumen dengan AI");
-      }
-
-      const processData = await processRes.json();
-      
-      setStatus("Mengalihkan ke halaman Koreksi...");
-      
-      // Redirect ke halaman review secara otomatis
-      if (processData.documentId) {
-        router.push(`/review/${processData.documentId}`);
-      } else {
+      setTimeout(() => {
         router.push("/dashboard");
-      }
+      }, 1500);
+
     } catch (error: any) {
       console.error(error);
       alert(error.message || "Terjadi kesalahan.");
@@ -104,11 +109,26 @@ export default function Home() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
             <span className="text-gray-600 font-medium text-sm md:text-base">Klik untuk memilih atau seret gambar ke sini</span>
-            <span className="text-gray-400 text-xs mt-2">Format: JPG, PNG, WEBP, PDF (Max 5MB)</span>
-            <input type="file" style={{ display: 'none' }} accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleFileChange} />
+            <span className="text-gray-400 text-xs mt-2">Format: JPG, PNG, WEBP, PDF (Max 5MB per file)</span>
+            <input type="file" multiple style={{ display: 'none' }} accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleFileChange} />
           </label>
-          {file && (
-            <p className="mt-2 text-xs text-gray-600 text-center truncate">{file.name}</p>
+          
+          {files.length > 0 && (
+            <div className="mt-4 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
+              <ul className="divide-y divide-gray-100">
+                {files.map((f, idx) => (
+                  <li key={idx} className="p-3 flex justify-between items-center text-sm text-gray-700">
+                    <span className="truncate pr-4">{f.name}</span>
+                    <button 
+                      onClick={() => removeFile(idx)}
+                      className="text-red-500 hover:text-red-700 font-medium text-xs flex-shrink-0"
+                    >
+                      Hapus
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
 
@@ -131,7 +151,7 @@ export default function Home() {
 
         <button
           onClick={handleUpload}
-          disabled={!file || loading}
+          disabled={files.length === 0 || loading}
           className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-2 px-4 rounded transition"
         >
           {loading ? "Memproses..." : "Upload & Ekstrak"}

@@ -5,13 +5,14 @@ import LogoutButton from "@/components/LogoutButton";
 import { getAuthUserFromHeaders } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import SortSelect, { type DashboardSortKey } from "./SortSelect";
 
 export const runtime = "edge";
 
 // Dummy data fallback if DB fails
 const dummyDocuments = [
-  { id: "1", vendor: "Starbucks (Fallback)", date: "2023-10-01", total_amount: 55000, status: "PENDING", document_type: "receipt", payment_method: "cash" },
-  { id: "2", vendor: "Gramedia (Fallback)", date: "2023-10-05", total_amount: 120000, status: "VERIFIED", document_type: "invoice", payment_method: "transfer" },
+  { id: "1", vendor: "Starbucks (Fallback)", date: "2023-10-01", total_amount: 55000, status: "PENDING", document_type: "receipt", payment_method: "cash", created_at: "2023-10-01 10:00:00" },
+  { id: "2", vendor: "Gramedia (Fallback)", date: "2023-10-05", total_amount: 120000, status: "VERIFIED", document_type: "invoice", payment_method: "transfer", created_at: "2023-10-05 12:30:00" },
 ];
 
 const DOCUMENT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
@@ -33,7 +34,83 @@ const PAYMENT_LABELS: Record<string, string> = {
   other: "-",
 };
 
-export default async function DashboardPage() {
+type DocumentRow = {
+  id: string;
+  document_type?: string | null;
+  vendor?: string | null;
+  date?: string | null;
+  total_amount?: number | null;
+  status?: string | null;
+  payment_method?: string | null;
+  category?: string | null;
+  reference_number?: string | null;
+  is_duplicate?: number | null;
+  created_at?: string | null;
+};
+
+function coerceSortKey(input: unknown): DashboardSortKey {
+  const v = typeof input === "string" ? input : "";
+  switch (v) {
+    case "created_asc":
+    case "total_desc":
+    case "total_asc":
+    case "vendor_asc":
+    case "vendor_desc":
+    case "created_desc":
+      return v;
+    default:
+      return "created_desc";
+  }
+}
+
+function getOrderBy(sort: DashboardSortKey): string {
+  switch (sort) {
+    case "created_asc":
+      return "created_at ASC";
+    case "total_desc":
+      return "COALESCE(total_amount, 0) DESC, created_at DESC";
+    case "total_asc":
+      return "COALESCE(total_amount, 0) ASC, created_at DESC";
+    case "vendor_asc":
+      return "(vendor IS NULL) ASC, vendor COLLATE NOCASE ASC, created_at DESC";
+    case "vendor_desc":
+      return "(vendor IS NULL) ASC, vendor COLLATE NOCASE DESC, created_at DESC";
+    case "created_desc":
+    default:
+      return "created_at DESC";
+  }
+}
+
+function formatCreatedAt(value: unknown): string {
+  if (!value) return "-";
+  const raw = String(value);
+  // Prefer YYYY-MM-DD if present
+  const m = raw.match(/\d{4}-\d{2}-\d{2}/);
+  return m ? m[0] : raw;
+}
+
+function getTypeBadgeClass(type: string | null | undefined): string {
+  switch (type) {
+    case "receipt":
+      return "bg-blue-50 text-blue-700 ring-blue-200";
+    case "invoice":
+      return "bg-purple-50 text-purple-700 ring-purple-200";
+    case "nota":
+      return "bg-orange-50 text-orange-700 ring-orange-200";
+    case "kwitansi":
+      return "bg-teal-50 text-teal-700 ring-teal-200";
+    case "faktur_pajak":
+      return "bg-red-50 text-red-700 ring-red-200";
+    default:
+      return "bg-gray-50 text-gray-700 ring-gray-200";
+  }
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const reqHeaders = await headers();
   const user = await getAuthUserFromHeaders(reqHeaders);
 
@@ -41,133 +118,214 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  let documents: any[] = [];
+  let documents: DocumentRow[] = [];
   let documentTypes: string[] = [];
+  let vendorList: string[] = [];
+  const resolvedSearchParams = (await searchParams) || {};
+  const sort = coerceSortKey(resolvedSearchParams.sort);
 
   try {
     const { env } = getRequestContext();
     const db = env.DB;
     if (db) {
-      const { results } = await db.prepare("SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC").bind(user.userId).all();
-      documents = results || [];
+      const orderBy = getOrderBy(sort);
+      const { results } = await db
+        .prepare(`SELECT * FROM documents WHERE user_id = ? ORDER BY ${orderBy}`)
+        .bind(user.userId)
+        .all();
+      documents = (results || []) as unknown as DocumentRow[];
 
       // Ambil daftar unik document_type yang ada di database untuk filter export (hanya milik user ini)
-      const typeResults = await db.prepare("SELECT DISTINCT document_type FROM documents WHERE document_type IS NOT NULL AND user_id = ?").bind(user.userId).all();
-      documentTypes = (typeResults.results || []).map((r: any) => r.document_type).filter(Boolean);
+      const typeResults = await db
+        .prepare("SELECT DISTINCT document_type FROM documents WHERE document_type IS NOT NULL AND user_id = ?")
+        .bind(user.userId)
+        .all();
+      documentTypes = ((typeResults.results || []) as unknown as Array<{ document_type?: string | null }>)
+        .map((r) => r.document_type)
+        .filter((t): t is string => Boolean(t));
+
+      // Ambil daftar unik vendor untuk dropdown filter export
+      const vendorResults = await db
+        .prepare("SELECT DISTINCT vendor FROM documents WHERE vendor IS NOT NULL AND vendor != '' AND user_id = ? ORDER BY vendor COLLATE NOCASE ASC")
+        .bind(user.userId)
+        .all();
+      vendorList = ((vendorResults.results || []) as unknown as Array<{ vendor?: string | null }>)
+        .map((r) => r.vendor)
+        .filter((v): v is string => Boolean(v));
     } else {
-      documents = dummyDocuments;
+      documents = dummyDocuments as unknown as DocumentRow[];
       documentTypes = ["receipt", "invoice"];
+      vendorList = ["Starbucks (Fallback)", "Gramedia (Fallback)"];
     }
   } catch (error) {
     console.error("Gagal mengambil data dari D1 Database:", error);
-    documents = dummyDocuments;
+    documents = dummyDocuments as unknown as DocumentRow[];
     documentTypes = ["receipt", "invoice"];
   }
 
+  // Hitung Summary Analytics
+  let totalExpense = 0;
+  let verifiedCount = 0;
+  const vendorCounts: Record<string, number> = {};
+
+  for (const doc of documents) {
+    const amount = doc.total_amount || 0;
+    totalExpense += amount;
+    
+    if (doc.status === "VERIFIED") {
+      verifiedCount++;
+    }
+
+    if (doc.vendor) {
+      vendorCounts[doc.vendor] = (vendorCounts[doc.vendor] || 0) + 1;
+    }
+  }
+
+  const averageExpense = documents.length > 0 ? totalExpense / documents.length : 0;
+  
+  let topVendor = "-";
+  let maxCount = 0;
+  for (const [vendor, count] of Object.entries(vendorCounts)) {
+    if (count > maxCount) {
+      maxCount = count;
+      topVendor = vendor;
+    }
+  }
+
   return (
-    <main style={{ minHeight: "100vh", padding: "32px", backgroundColor: "#f9fafb" }}>
-      <div style={{ maxWidth: "1152px", margin: "0 auto", backgroundColor: "#fff", padding: "32px", borderRadius: "12px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", flexWrap: "wrap", gap: "12px" }}>
-          <div>
-            <h1 style={{ fontSize: "24px", fontWeight: 700, color: "#1f2937" }}>Halo, {user.name}</h1>
-            <p style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>{documents.length} dokumen Anda ditemukan</p>
+    <main className="min-h-screen bg-gray-50">
+      <div className="mx-auto w-full max-w-6xl px-4 py-8 md:px-8">
+        <div className="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
+          <div className="flex flex-col gap-4 border-b border-gray-100 p-6 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Halo, {user.name}</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                {documents.length} dokumen ditemukan • Sort: <span className="font-medium text-gray-700">{sort}</span>
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/"
+                className="inline-flex h-9 items-center rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+              >
+                + Upload Baru
+              </Link>
+              <ExportModal documentTypes={documentTypes} vendorList={vendorList} />
+              <LogoutButton />
+            </div>
           </div>
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-            <Link
-              href="/"
-              style={{
-                backgroundColor: "#2563eb",
-                color: "#fff",
-                padding: "8px 16px",
-                borderRadius: "6px",
-                fontSize: "13px",
-                fontWeight: 600,
-                textDecoration: "none",
-                whiteSpace: "nowrap",
-                display: "inline-block",
-              }}
-            >
-              + Upload Baru
-            </Link>
-            <ExportModal documentTypes={documentTypes} />
-            <LogoutButton />
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 gap-4 border-b border-gray-100 p-6 md:grid-cols-4">
+            <div className="rounded-xl border border-gray-100 bg-blue-50 p-4">
+              <p className="text-sm font-medium text-blue-600">Total Pengeluaran</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900">Rp {totalExpense.toLocaleString("id-ID")}</p>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-emerald-50 p-4">
+              <p className="text-sm font-medium text-emerald-600">Rata-rata Transaksi</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900">Rp {Math.round(averageExpense).toLocaleString("id-ID")}</p>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-purple-50 p-4">
+              <p className="text-sm font-medium text-purple-600">Total Dokumen</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900">{documents.length}</p>
+              <p className="mt-1 text-xs text-gray-500">{verifiedCount} Terverifikasi</p>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-orange-50 p-4">
+              <p className="text-sm font-medium text-orange-600">Top Vendor</p>
+              <p className="mt-2 text-lg font-bold text-gray-900 line-clamp-1">{topVendor}</p>
+              <p className="mt-1 text-xs text-gray-500">{maxCount} Transaksi</p>
+            </div>
           </div>
-        </div>
 
-        {/* Tabel Data */}
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", textAlign: "left", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ backgroundColor: "#f3f4f6", borderBottom: "1px solid #e5e7eb" }}>
-                <th style={{ padding: "12px", color: "#4b5563", fontWeight: 600, fontSize: "13px" }}>Jenis</th>
-                <th style={{ padding: "12px", color: "#4b5563", fontWeight: 600, fontSize: "13px" }}>Vendor</th>
-                <th style={{ padding: "12px", color: "#4b5563", fontWeight: 600, fontSize: "13px" }}>Tanggal</th>
-                <th style={{ padding: "12px", color: "#4b5563", fontWeight: 600, fontSize: "13px", textAlign: "right" }}>Total</th>
-                <th style={{ padding: "12px", color: "#4b5563", fontWeight: 600, fontSize: "13px" }}>Pembayaran</th>
-                <th style={{ padding: "12px", color: "#4b5563", fontWeight: 600, fontSize: "13px" }}>Status</th>
-                <th style={{ padding: "12px", color: "#4b5563", fontWeight: 600, fontSize: "13px" }}>Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {documents.map((doc: any) => {
-                const typeInfo = DOCUMENT_TYPE_LABELS[doc.document_type] || DOCUMENT_TYPE_LABELS.other;
-                const paymentLabel = PAYMENT_LABELS[doc.payment_method] || "-";
+          <div className="flex flex-col gap-3 p-6 md:flex-row md:items-center md:justify-between">
+            <SortSelect value={sort} />
 
-                // Map type colors to inline styles
-                const typeColorMap: Record<string, { bg: string; text: string }> = {
-                  receipt: { bg: "#dbeafe", text: "#1e40af" },
-                  invoice: { bg: "#ede9fe", text: "#6d28d9" },
-                  nota: { bg: "#ffedd5", text: "#c2410c" },
-                  kwitansi: { bg: "#ccfbf1", text: "#0f766e" },
-                  faktur_pajak: { bg: "#fee2e2", text: "#b91c1c" },
-                  other: { bg: "#f3f4f6", text: "#374151" },
-                };
-                const typeStyle = typeColorMap[doc.document_type] || typeColorMap.other;
+            {documents.length === 0 ? (
+              <div className="text-sm text-gray-500">Belum ada dokumen. Mulai dengan upload dokumen pertama Anda.</div>
+            ) : (
+              <div className="text-xs text-gray-500">Klik “Review” untuk verifikasi / koreksi data.</div>
+            )}
+          </div>
 
-                return (
-                  <tr key={doc.id} style={{ borderBottom: "1px solid #e5e7eb" }}>
-                    <td style={{ padding: "12px" }}>
-                      <span style={{
-                        backgroundColor: typeStyle.bg,
-                        color: typeStyle.text,
-                        padding: "4px 8px",
-                        borderRadius: "4px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        whiteSpace: "nowrap",
-                      }}>
-                        {typeInfo.label}
-                      </span>
-                    </td>
-                    <td style={{ padding: "12px", fontWeight: 500, color: "#1f2937", fontSize: "14px" }}>{doc.vendor || "-"}</td>
-                    <td style={{ padding: "12px", color: "#4b5563", fontSize: "13px" }}>{doc.date || "-"}</td>
-                    <td style={{ padding: "12px", textAlign: "right", fontWeight: 600, color: "#1f2937", fontSize: "14px" }}>
-                      Rp {(doc.total_amount || 0).toLocaleString()}
-                    </td>
-                    <td style={{ padding: "12px", fontSize: "13px", color: "#4b5563" }}>{paymentLabel}</td>
-                    <td style={{ padding: "12px" }}>
-                      <span style={{
-                        backgroundColor: doc.status === "VERIFIED" ? "#dcfce7" : "#fef9c3",
-                        color: doc.status === "VERIFIED" ? "#166534" : "#854d0e",
-                        padding: "4px 8px",
-                        borderRadius: "4px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                      }}>
-                        {doc.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: "12px" }}>
-                      <Link href={`/review/${doc.id}`} style={{ color: "#2563eb", textDecoration: "none", fontSize: "13px" }}>
-                        Review
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto border-t border-gray-100">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-gray-50 text-xs font-semibold text-gray-600">
+                <tr className="border-b border-gray-200">
+                  <th className="px-6 py-3">Jenis</th>
+                  <th className="px-6 py-3">Vendor</th>
+                  <th className="px-6 py-3">Kategori</th>
+                  <th className="px-6 py-3">No. Referensi</th>
+                  <th className="px-6 py-3">Tanggal</th>
+                  <th className="px-6 py-3">Dibuat</th>
+                  <th className="px-6 py-3 text-right">Total</th>
+                  <th className="px-6 py-3">Pembayaran</th>
+                  <th className="px-6 py-3">Status</th>
+                  <th className="px-6 py-3">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {(documents as DocumentRow[]).map((doc) => {
+                  const typeKey = doc.document_type ?? "other";
+                  const paymentKey = doc.payment_method ?? "other";
+                  const typeInfo = DOCUMENT_TYPE_LABELS[typeKey] || DOCUMENT_TYPE_LABELS.other;
+                  const paymentLabel = PAYMENT_LABELS[paymentKey] || "-";
+                  const createdAt = formatCreatedAt(doc.created_at);
+                  const typeBadgeClass = getTypeBadgeClass(doc.document_type);
+
+                  const statusClass =
+                    doc.status === "VERIFIED"
+                      ? "bg-green-50 text-green-700 ring-green-200"
+                      : "bg-yellow-50 text-yellow-800 ring-yellow-200";
+
+                  return (
+                    <tr key={doc.id} className="bg-white">
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset ${typeBadgeClass}`}
+                        >
+                          {typeInfo.label}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-gray-900">{doc.vendor || "-"}</td>
+                      <td className="px-6 py-4 text-gray-600">
+                        <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
+                          {doc.category || "Uncategorized"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-gray-600 font-mono text-xs">{doc.reference_number || "-"}</td>
+                      <td className="px-6 py-4 text-gray-600">{doc.date || "-"}</td>
+                      <td className="px-6 py-4 text-gray-600">{createdAt}</td>
+                      <td className="px-6 py-4 text-right font-semibold text-gray-900">
+                        Rp {(doc.total_amount || 0).toLocaleString("id-ID")}
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">{paymentLabel}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset ${statusClass}`}>
+                            {doc.status}
+                          </span>
+                          {doc.is_duplicate === 1 && (
+                            <span className="inline-flex items-center rounded-md bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700 ring-1 ring-inset ring-red-200" title="Kemungkinan Duplikat">
+                              ⚠️ DUPLIKAT
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <Link
+                          href={`/review/${doc.id}`}
+                          className="inline-flex h-8 items-center rounded-md bg-blue-50 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                        >
+                          Review
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </main>
