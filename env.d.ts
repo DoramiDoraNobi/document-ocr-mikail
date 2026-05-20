@@ -2,6 +2,7 @@ declare global {
   /** Cloudflare Pages/Workers bindings (used by @cloudflare/next-on-pages getRequestContext().env) */
   interface CloudflareEnv {
     DB: D1Database;
+    BUCKET: R2Bucket;
   }
 
   namespace NodeJS {
@@ -20,6 +21,7 @@ declare global {
 declare module "@cloudflare/next-on-pages" {
   interface CloudflareEnv {
     DB: D1Database;
+    BUCKET: R2Bucket;
   }
 }
 

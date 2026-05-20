@@ -33,33 +33,20 @@ export default function Home() {
         const file = files[i];
         setStatus(`[${i + 1}/${files.length}] Meminta akses untuk: ${file.name}...`);
         
-        // 1. Dapatkan Presigned URL
+        // 1 & 2. Upload file langsung ke API yang akan menyimpannya ke R2
+        const formData = new FormData();
+        formData.append("file", file);
+
         const res = await fetch("/api/upload", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fileType: file.type, fileSize: file.size }),
+          body: formData,
         });
         
         if (!res.ok) {
-          throw new Error("Gagal mendapatkan URL upload");
+          throw new Error("Gagal mengunggah file");
         }
 
-        const { uploadUrl, fileKey } = await res.json();
-
-        setStatus(`[${i + 1}/${files.length}] Mengunggah dokumen...`);
-        
-        // 2. Upload file langsung ke R2
-        const uploadRes = await fetch(uploadUrl, {
-          method: "PUT",
-          headers: {
-            "Content-Type": file.type,
-          },
-          body: file,
-        });
-
-        if (!uploadRes.ok) {
-          throw new Error("Gagal mengunggah file ke Cloudflare R2");
-        }
+        const { fileKey } = await res.json();
 
         setStatus(`[${i + 1}/${files.length}] Memproses dengan AI... (Bisa memakan waktu)`);
         

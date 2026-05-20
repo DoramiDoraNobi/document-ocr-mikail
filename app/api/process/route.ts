@@ -1,12 +1,10 @@
 export const runtime = "edge";
 
 import { extractDocumentData } from "@/lib/ai";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { v4 as uuidv4 } from "uuid";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { getRequestContext } from "@cloudflare/next-on-pages";
-import { getEnv } from "@/lib/env";
 
 export async function POST(req: Request) {
   try {
@@ -21,38 +19,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const CF_ACCOUNT_ID = getEnv("CF_ACCOUNT_ID");
-    const R2_ACCESS_KEY_ID = getEnv("R2_ACCESS_KEY_ID");
-    const R2_SECRET_ACCESS_KEY = getEnv("R2_SECRET_ACCESS_KEY");
-    const R2_BUCKET_NAME = getEnv("R2_BUCKET_NAME");
+    const { env } = getRequestContext();
+    const bucket = env.BUCKET;
 
-    if (!CF_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME) {
-      return NextResponse.json({ error: "Konfigurasi server salah." }, { status: 500 });
+    if (!bucket) {
+      return NextResponse.json({ error: "Konfigurasi server salah (Bucket tidak ditemukan)." }, { status: 500 });
     }
 
     // 1. Ambil gambar dari R2
-    const S3 = new S3Client({
-      region: "auto",
-      endpoint: `https://${CF_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: R2_ACCESS_KEY_ID,
-        secretAccessKey: R2_SECRET_ACCESS_KEY,
-      },
-    });
+    const object = await bucket.get(fileKey);
 
-    const getObjectResult = await S3.send(
-      new GetObjectCommand({
-        Bucket: R2_BUCKET_NAME,
-        Key: fileKey,
-      })
-    );
-
-    if (!getObjectResult.Body) {
+    if (!object) {
       return NextResponse.json({ error: "File tidak ditemukan di R2" }, { status: 404 });
     }
 
     // Convert file Stream/Blob to Base64
-    const byteArray = await getObjectResult.Body.transformToByteArray();
+    const arrayBuffer = await object.arrayBuffer();
+    const byteArray = new Uint8Array(arrayBuffer);
     // Convert Uint8Array to Base64
     const base64Image = Buffer.from(byteArray).toString("base64");
 
@@ -82,7 +65,6 @@ export async function POST(req: Request) {
     const referenceNumber = extractedJson.reference_number?.value || "";
 
     // 3. Simpan hasil ke D1 Database
-    const { env } = getRequestContext();
     const db = env.DB;
     if (db) {
       const docId = uuidv4();

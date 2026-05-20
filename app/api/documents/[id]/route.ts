@@ -1,31 +1,8 @@
 export const runtime = "edge";
 
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getRequestContext } from "@cloudflare/next-on-pages";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { getEnv } from "@/lib/env";
-
-// Helper untuk inisialisasi S3 Client
-function getS3Client() {
-  const CF_ACCOUNT_ID = getEnv("CF_ACCOUNT_ID");
-  const R2_ACCESS_KEY_ID = getEnv("R2_ACCESS_KEY_ID");
-  const R2_SECRET_ACCESS_KEY = getEnv("R2_SECRET_ACCESS_KEY");
-
-  if (!CF_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
-    throw new Error("Missing R2 environment variables");
-  }
-
-  return new S3Client({
-    region: "auto",
-    endpoint: `https://${CF_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: R2_ACCESS_KEY_ID,
-      secretAccessKey: R2_SECRET_ACCESS_KEY,
-    },
-  });
-}
 
 // GET: Ambil detail dokumen tunggal beserta URL R2 Presigned
 export async function GET(
@@ -55,19 +32,8 @@ export async function GET(
       return NextResponse.json({ error: "Dokumen tidak ditemukan." }, { status: 404 });
     }
 
-    // Generate Presigned URL untuk melihat gambar/PDF dari R2
-    let viewUrl = "";
-    try {
-      const S3 = getS3Client();
-      const command = new GetObjectCommand({
-        Bucket: getEnv("R2_BUCKET_NAME"),
-        Key: doc.file_key as string,
-      });
-      // Berlaku selama 10 menit (600 detik)
-      viewUrl = await getSignedUrl(S3, command, { expiresIn: 600 });
-    } catch (s3Error) {
-      console.error("Gagal men-generate R2 view URL:", s3Error);
-    }
+    // Gunakan rute lokal untuk melihat file R2
+    const viewUrl = `/api/documents/${id}/file`;
 
     return NextResponse.json({
       document: {
