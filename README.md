@@ -68,7 +68,7 @@ Beberapa asumsi yang dipakai saat membangun MVP ini:
 
 ## AI Workflow Log
 
-Bagian ini menjelaskan bagaimana AI dipakai di aplikasi ini, dan biasanya akan dibahas saat interview.
+
 
 | Komponen            | Tool / Agent                       | Dipakai Untuk                                                    |
 | ------------------- | ---------------------------------- | ---------------------------------------------------------------- |
