@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS documents (
     line_items TEXT, -- Menyimpan JSON array dari detail item
     ai_confidence_score REAL,
     raw_ai_json TEXT,
+    final_json TEXT,
     category TEXT DEFAULT 'Uncategorized',
     reference_number TEXT,
     is_duplicate INTEGER DEFAULT 0,

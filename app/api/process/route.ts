@@ -1,12 +1,10 @@
 export const runtime = "edge";
 
 import { extractDocumentData } from "@/lib/ai";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { v4 as uuidv4 } from "uuid";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { getRequestContext } from "@cloudflare/next-on-pages";
-import { getEnv } from "@/lib/env";
 import { validateMagicBytes, checkRateLimit, RATE_LIMITS, safeLogError } from "@/lib/security";
 import { recordAudit, getClientIP } from "@/lib/audit";
 
@@ -39,38 +37,20 @@ export async function POST(req: Request) {
       }
     }
 
-    const CF_ACCOUNT_ID = getEnv("CF_ACCOUNT_ID");
-    const R2_ACCESS_KEY_ID = getEnv("R2_ACCESS_KEY_ID");
-    const R2_SECRET_ACCESS_KEY = getEnv("R2_SECRET_ACCESS_KEY");
-    const R2_BUCKET_NAME = getEnv("R2_BUCKET_NAME");
-
-    if (!CF_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME) {
-      return NextResponse.json({ error: "Konfigurasi server salah." }, { status: 500 });
+    const bucket = env.BUCKET;
+    if (!bucket) {
+      return NextResponse.json({ error: "Konfigurasi server salah (Bucket tidak ditemukan)." }, { status: 500 });
     }
 
     // 1. Ambil gambar dari R2
-    const S3 = new S3Client({
-      region: "auto",
-      endpoint: `https://${CF_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: R2_ACCESS_KEY_ID,
-        secretAccessKey: R2_SECRET_ACCESS_KEY,
-      },
-    });
-
-    const getObjectResult = await S3.send(
-      new GetObjectCommand({
-        Bucket: R2_BUCKET_NAME,
-        Key: fileKey,
-      })
-    );
-
-    if (!getObjectResult.Body) {
+    const object = await bucket.get(fileKey);
+    if (!object) {
       return NextResponse.json({ error: "File tidak ditemukan di R2" }, { status: 404 });
     }
 
     // Convert file Stream/Blob to Base64
-    const byteArray = await getObjectResult.Body.transformToByteArray();
+    const arrayBuffer = await object.arrayBuffer();
+    const byteArray = new Uint8Array(arrayBuffer);
 
     // KEAMANAN: Validasi magic bytes — verifikasi tipe file dari header, bukan MIME type client
     const fileValidation = validateMagicBytes(byteArray);
@@ -116,7 +96,6 @@ export async function POST(req: Request) {
     const referenceNumber = extractedJson.reference_number?.value || "";
 
     // 3. Simpan hasil ke D1 Database
-    // env dan db sudah diambil di atas untuk rate limiting
     if (db) {
       const docId = uuidv4();
       const userId = user.userId;

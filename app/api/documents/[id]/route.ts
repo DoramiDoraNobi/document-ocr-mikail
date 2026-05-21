@@ -1,35 +1,12 @@
 export const runtime = "edge";
 
-import { S3Client, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getRequestContext } from "@cloudflare/next-on-pages";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { getEnv } from "@/lib/env";
 import { safeLogError, sanitizeInput } from "@/lib/security";
 import { recordAudit, getClientIP } from "@/lib/audit";
 
-// Helper untuk inisialisasi S3 Client
-function getS3Client() {
-  const CF_ACCOUNT_ID = getEnv("CF_ACCOUNT_ID");
-  const R2_ACCESS_KEY_ID = getEnv("R2_ACCESS_KEY_ID");
-  const R2_SECRET_ACCESS_KEY = getEnv("R2_SECRET_ACCESS_KEY");
-
-  if (!CF_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
-    throw new Error("Missing R2 environment variables");
-  }
-
-  return new S3Client({
-    region: "auto",
-    endpoint: `https://${CF_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: R2_ACCESS_KEY_ID,
-      secretAccessKey: R2_SECRET_ACCESS_KEY,
-    },
-  });
-}
-
-// GET: Ambil detail dokumen tunggal beserta URL R2 Presigned
+// GET: Ambil detail dokumen tunggal beserta URL Rute Lokal
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -51,25 +28,14 @@ export async function GET(
     }
 
     // Ambil dokumen dari D1
-    const doc = await db.prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?").bind(id, user.userId).first();
+    const doc = await db.prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?").bind(id, user.userId).first<any>();
 
     if (!doc) {
       return NextResponse.json({ error: "Dokumen tidak ditemukan." }, { status: 404 });
     }
 
-    // Generate Presigned URL untuk melihat gambar/PDF dari R2
-    let viewUrl = "";
-    try {
-      const S3 = getS3Client();
-      const command = new GetObjectCommand({
-        Bucket: getEnv("R2_BUCKET_NAME"),
-        Key: doc.file_key as string,
-      });
-      // Berlaku selama 10 menit (600 detik)
-      viewUrl = await getSignedUrl(S3, command, { expiresIn: 600 });
-    } catch (s3Error) {
-      safeLogError("DocumentViewURL", s3Error);
-    }
+    // Gunakan rute lokal untuk melihat file R2
+    const viewUrl = `/api/documents/${id}/file`;
 
     // Audit log: rekam aksi view
     recordAudit(db, {
@@ -184,7 +150,7 @@ export async function PUT(
   }
 }
 
-// DELETE: Hapus dokumen dari database
+// DELETE: Hapus dokumen dari database dan R2
 export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -215,17 +181,14 @@ export async function DELETE(
     await db.prepare("DELETE FROM documents WHERE id = ? AND user_id = ?").bind(id, user.userId).run();
 
     // Hapus file dari R2 (cleanup, agar tidak ada file orphan)
-    try {
-      const S3 = getS3Client();
-      await S3.send(
-        new DeleteObjectCommand({
-          Bucket: getEnv("R2_BUCKET_NAME"),
-          Key: doc.file_key,
-        })
-      );
-    } catch (s3Error) {
-      // R2 delete gagal — log tapi jangan gagalkan operasi (file orphan lebih baik daripada error)
-      safeLogError("R2DeleteFile", s3Error);
+    const bucket = env.BUCKET;
+    if (bucket) {
+      try {
+        await bucket.delete(doc.file_key);
+      } catch (r2Error) {
+        // R2 delete gagal — log tapi jangan gagalkan operasi (file orphan lebih baik daripada error)
+        safeLogError("R2DeleteFile", r2Error);
+      }
     }
 
     // Audit log: rekam aksi hapus
