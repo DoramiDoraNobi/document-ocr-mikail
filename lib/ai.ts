@@ -107,7 +107,7 @@ ${dynamicFields},
       throw new Error(`Model utama error: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
     return JSON.parse(data.choices[0].message.content);
 
   } catch (error) {
@@ -144,7 +144,7 @@ ${dynamicFields},
       throw new Error("Gagal mengekstrak data menggunakan AI (Model Utama & Fallback gagal)");
     }
 
-    const fallbackData = await fallbackResponse.json();
+    const fallbackData = await fallbackResponse.json() as any;
     try {
       return JSON.parse(fallbackData.choices[0].message.content);
     } catch (e) {
