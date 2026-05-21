@@ -44,3 +44,32 @@ CREATE TABLE IF NOT EXISTS document_templates (
     FOREIGN KEY(user_id) REFERENCES users(id),
     UNIQUE(user_id, vendor_pattern, document_type) -- Satu vendor bisa punya template berbeda per jenis dokumen
 );
+
+-- Tabel rate_limits: Catatan request per user/IP untuk rate limiting
+CREATE TABLE IF NOT EXISTS rate_limits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL,
+    action TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limits_lookup
+    ON rate_limits (key, action, created_at);
+
+-- Tabel audit_logs: Rekaman aksi penting untuk audit trail
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    details TEXT,
+    ip_address TEXT,
+    created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user
+    ON audit_logs (user_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action
+    ON audit_logs (action, created_at);

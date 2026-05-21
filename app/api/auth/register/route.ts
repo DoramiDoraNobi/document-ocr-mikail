@@ -4,10 +4,12 @@ import { NextResponse } from "next/server";
 import { getRequestContext } from "@cloudflare/next-on-pages";
 import { hashPassword, createToken, createAuthCookie } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
+import { safeLogError, sanitizeInput } from "@/lib/security";
+import { recordAudit, getClientIP } from "@/lib/audit";
 
 export async function POST(req: Request) {
   try {
-    const { name, email, password } = await req.json();
+    const { name, email, password } = await req.json() as any;
 
     // Validasi input
     if (!name || !email || !password) {
@@ -46,8 +48,8 @@ export async function POST(req: Request) {
     // Hash password
     const passwordHash = await hashPassword(password);
     const userId = uuidv4();
-    const cleanName = name.trim();
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = sanitizeInput(name, 100);
+    const cleanEmail = sanitizeInput(email, 255).toLowerCase();
 
     // Insert user baru
     await db
@@ -59,12 +61,23 @@ export async function POST(req: Request) {
     const token = await createToken({ userId, email: cleanEmail, name: cleanName });
     const cookie = createAuthCookie(token);
 
+    // Audit log: registrasi berhasil
+    const clientIP = getClientIP(req);
+    recordAudit(db, {
+      userId,
+      action: "register",
+      targetType: "user",
+      targetId: userId,
+      details: `email=${cleanEmail}`,
+      ipAddress: clientIP,
+    });
+
     return NextResponse.json(
       { success: true, user: { id: userId, name: cleanName, email: cleanEmail } },
       { headers: { "Set-Cookie": cookie } }
     );
-  } catch (error: any) {
-    console.error("Register Error:", error);
+  } catch (error: unknown) {
+    safeLogError("RegisterRoute", error);
     return NextResponse.json({ error: "Terjadi kesalahan saat mendaftar." }, { status: 500 });
   }
 }

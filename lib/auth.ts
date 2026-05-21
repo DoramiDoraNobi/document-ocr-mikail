@@ -129,14 +129,14 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
  */
 export function createAuthCookie(token: string): string {
   const maxAge = 7 * 24 * 60 * 60; // 7 hari dalam detik
-  return `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
+  return `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
 }
 
 /**
  * Buat Set-Cookie header untuk menghapus auth token (logout)
  */
 export function createLogoutCookie(): string {
-  return `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
+  return `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;
 }
 
 /**

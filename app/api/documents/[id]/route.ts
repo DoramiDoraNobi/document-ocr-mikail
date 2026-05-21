@@ -1,11 +1,13 @@
 export const runtime = "edge";
 
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getRequestContext } from "@cloudflare/next-on-pages";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { getEnv } from "@/lib/env";
+import { safeLogError, sanitizeInput } from "@/lib/security";
+import { recordAudit, getClientIP } from "@/lib/audit";
 
 // Helper untuk inisialisasi S3 Client
 function getS3Client() {
@@ -66,8 +68,17 @@ export async function GET(
       // Berlaku selama 10 menit (600 detik)
       viewUrl = await getSignedUrl(S3, command, { expiresIn: 600 });
     } catch (s3Error) {
-      console.error("Gagal men-generate R2 view URL:", s3Error);
+      safeLogError("DocumentViewURL", s3Error);
     }
+
+    // Audit log: rekam aksi view
+    recordAudit(db, {
+      userId: user.userId,
+      action: "view",
+      targetType: "document",
+      targetId: id,
+      ipAddress: getClientIP(req),
+    });
 
     return NextResponse.json({
       document: {
@@ -96,7 +107,7 @@ export async function GET(
     });
 
   } catch (error) {
-    console.error("Error GET /api/documents/[id]:", error);
+    safeLogError("GET /api/documents/[id]", error);
     return NextResponse.json({ error: "Gagal mengambil data dokumen." }, { status: 500 });
   }
 }
@@ -121,16 +132,16 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await req.json() as any;
     const status = body.status || "PENDING";
     
     // Fallback ekstraksi field default agar Dashboard tetap berjalan
-    const vendor = body.vendor?.value || body["Nama Vendor"]?.value || "";
-    const date = body.date?.value || body.tanggal?.value || "";
+    const vendor = sanitizeInput(body.vendor?.value || body["Nama Vendor"]?.value || "", 255);
+    const date = sanitizeInput(body.date?.value || body.tanggal?.value || "", 50);
     const total_amount = parseFloat(body.total_amount?.value || 0);
-    const currency = body.currency?.value || "";
-    const category = body.category?.value || "Uncategorized";
-    const reference_number = body.reference_number?.value || "";
+    const currency = sanitizeInput(body.currency?.value || "", 10);
+    const category = sanitizeInput(body.category?.value || "Uncategorized", 100);
+    const reference_number = sanitizeInput(body.reference_number?.value || "", 100);
     const is_duplicate = 0; // Bersihkan flag duplikat saat diverifikasi manual
 
     // Simpan seluruh state dynamic form ke final_json
@@ -154,10 +165,21 @@ export async function PUT(
       user.userId
     ).run();
 
+    // Audit log: rekam aksi edit/verify
+    const auditAction = status === "VERIFIED" ? "verify" as const : "edit" as const;
+    recordAudit(db, {
+      userId: user.userId,
+      action: auditAction,
+      targetType: "document",
+      targetId: id,
+      details: `status=${status}, vendor=${vendor}`,
+      ipAddress: getClientIP(req),
+    });
+
     return NextResponse.json({ success: true });
 
   } catch (error) {
-    console.error("Error PUT /api/documents/[id]:", error);
+    safeLogError("PUT /api/documents/[id]", error);
     return NextResponse.json({ error: "Gagal memperbarui data dokumen." }, { status: 500 });
   }
 }
@@ -182,13 +204,44 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Hanya hapus dari database untuk sekarang (idealnya hapus dari R2 juga)
+    // Ambil file_key sebelum menghapus, agar bisa hapus file dari R2
+    const doc = await db.prepare("SELECT file_key FROM documents WHERE id = ? AND user_id = ?").bind(id, user.userId).first<{ file_key: string }>();
+
+    if (!doc) {
+      return NextResponse.json({ error: "Dokumen tidak ditemukan." }, { status: 404 });
+    }
+
+    // Hapus dari database
     await db.prepare("DELETE FROM documents WHERE id = ? AND user_id = ?").bind(id, user.userId).run();
+
+    // Hapus file dari R2 (cleanup, agar tidak ada file orphan)
+    try {
+      const S3 = getS3Client();
+      await S3.send(
+        new DeleteObjectCommand({
+          Bucket: getEnv("R2_BUCKET_NAME"),
+          Key: doc.file_key,
+        })
+      );
+    } catch (s3Error) {
+      // R2 delete gagal — log tapi jangan gagalkan operasi (file orphan lebih baik daripada error)
+      safeLogError("R2DeleteFile", s3Error);
+    }
+
+    // Audit log: rekam aksi hapus
+    recordAudit(db, {
+      userId: user.userId,
+      action: "delete",
+      targetType: "document",
+      targetId: id,
+      details: `file_key=${doc.file_key}`,
+      ipAddress: getClientIP(req),
+    });
 
     return NextResponse.json({ success: true, message: "Dokumen dihapus" });
 
   } catch (error) {
-    console.error("Error DELETE /api/documents/[id]:", error);
+    safeLogError("DELETE /api/documents/[id]", error);
     return NextResponse.json({ error: "Gagal menghapus dokumen." }, { status: 500 });
   }
 }

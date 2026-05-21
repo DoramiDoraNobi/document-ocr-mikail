@@ -2,6 +2,8 @@ export const runtime = "edge";
 
 import { getRequestContext } from "@cloudflare/next-on-pages";
 import { getAuthUser } from "@/lib/auth";
+import { checkRateLimit, RATE_LIMITS, safeLogError } from "@/lib/security";
+import { recordAudit, getClientIP } from "@/lib/audit";
 
 // Helper: Escape field untuk CSV yang benar
 // - Jika mengandung koma, kutip ganda, atau newline → bungkus dengan kutip ganda
@@ -65,6 +67,18 @@ export async function GET(req: Request) {
     const user = await getAuthUser(req);
     if (!user) {
       return new Response("Unauthorized", { status: 401 });
+    }
+
+    // Rate limiting: max 10 export per menit per user
+    const rateCheck = await checkRateLimit(
+      db, user.userId, "export",
+      RATE_LIMITS.export.maxRequests, RATE_LIMITS.export.windowSeconds
+    );
+    if (!rateCheck.allowed) {
+      return new Response("Terlalu banyak permintaan export. Silakan tunggu sebentar.", {
+        status: 429,
+        headers: { "Retry-After": String(rateCheck.resetAt - Math.floor(Date.now() / 1000)) }
+      });
     }
 
     // Parse query params
@@ -295,6 +309,17 @@ export async function GET(req: Request) {
       filename = `export_dokumen_${new Date().toISOString().split("T")[0]}.csv`;
     }
 
+    // Audit log: rekam aksi export
+    const clientIP = getClientIP(req);
+    recordAudit(db, {
+      userId: user.userId,
+      action: "export",
+      targetType: "export",
+      targetId: singleId || "bulk",
+      details: `docs=${documents.length}, format=${includeLineItems ? "detail" : "summary"}`,
+      ipAddress: clientIP,
+    });
+
     return new Response(BOM + csvContent, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
@@ -303,7 +328,7 @@ export async function GET(req: Request) {
     });
 
   } catch (error) {
-    console.error("Export Error:", error);
+    safeLogError("ExportRoute", error);
     return new Response("Terjadi kesalahan saat melakukan export CSV.", { status: 500 });
   }
 }

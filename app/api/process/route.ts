@@ -7,10 +7,12 @@ import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { getRequestContext } from "@cloudflare/next-on-pages";
 import { getEnv } from "@/lib/env";
+import { validateMagicBytes, checkRateLimit, RATE_LIMITS, safeLogError } from "@/lib/security";
+import { recordAudit, getClientIP } from "@/lib/audit";
 
 export async function POST(req: Request) {
   try {
-    const { fileKey, customFields } = await req.json();
+    const { fileKey, customFields } = await req.json() as any;
 
     if (!fileKey) {
       return NextResponse.json({ error: "Missing fileKey" }, { status: 400 });
@@ -19,6 +21,22 @@ export async function POST(req: Request) {
     const user = await getAuthUser(req);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Rate limiting: max 10 proses AI per menit per user
+    const { env } = getRequestContext();
+    const db = env.DB;
+    if (db) {
+      const rateCheck = await checkRateLimit(
+        db, user.userId, "process",
+        RATE_LIMITS.process.maxRequests, RATE_LIMITS.process.windowSeconds
+      );
+      if (!rateCheck.allowed) {
+        return NextResponse.json(
+          { error: "Terlalu banyak permintaan. Silakan tunggu sebentar." },
+          { status: 429, headers: { "Retry-After": String(rateCheck.resetAt - Math.floor(Date.now() / 1000)) } }
+        );
+      }
     }
 
     const CF_ACCOUNT_ID = getEnv("CF_ACCOUNT_ID");
@@ -53,14 +71,30 @@ export async function POST(req: Request) {
 
     // Convert file Stream/Blob to Base64
     const byteArray = await getObjectResult.Body.transformToByteArray();
+
+    // KEAMANAN: Validasi magic bytes — verifikasi tipe file dari header, bukan MIME type client
+    const fileValidation = validateMagicBytes(byteArray);
+    if (!fileValidation.valid) {
+      return NextResponse.json(
+        { error: "File tidak valid. Tipe file tidak dikenali atau tidak didukung." },
+        { status: 400 }
+      );
+    }
+
+    // KEAMANAN: Validasi ukuran file setelah diambil dari R2 (server-side enforcement)
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    if (byteArray.length > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: "File terlalu besar. Maksimal 5MB." },
+        { status: 400 }
+      );
+    }
+
     // Convert Uint8Array to Base64
     const base64Image = Buffer.from(byteArray).toString("base64");
 
-    // Deteksi MimeType sederhana dari ekstensi fileKey
-    let mimeType = "image/jpeg";
-    if (fileKey.toLowerCase().endsWith(".png")) mimeType = "image/png";
-    if (fileKey.toLowerCase().endsWith(".webp")) mimeType = "image/webp";
-    if (fileKey.toLowerCase().endsWith(".pdf")) mimeType = "application/pdf";
+    // Gunakan MIME type dari magic bytes (bukan dari ekstensi file)
+    const mimeType = fileValidation.mimeType;
 
     // 2. Kirim ke Qwen2.5 VL via OpenRouter
     const extractedJson = await extractDocumentData(base64Image, mimeType, customFields);
@@ -82,8 +116,7 @@ export async function POST(req: Request) {
     const referenceNumber = extractedJson.reference_number?.value || "";
 
     // 3. Simpan hasil ke D1 Database
-    const { env } = getRequestContext();
-    const db = env.DB;
+    // env dan db sudah diambil di atas untuk rate limiting
     if (db) {
       const docId = uuidv4();
       const userId = user.userId;
@@ -216,6 +249,17 @@ export async function POST(req: Request) {
           ).run();
       }
 
+      // Audit log: rekam proses dokumen berhasil
+      const clientIP = getClientIP(req);
+      recordAudit(db, {
+        userId,
+        action: "process",
+        targetType: "document",
+        targetId: docId,
+        details: `type=${documentType}, vendor=${vendorName}, confidence=${finalConfidence.toFixed(2)}`,
+        ipAddress: clientIP,
+      });
+
       return NextResponse.json({ 
         message: "Dokumen berhasil diproses", 
         documentId: docId, 
@@ -232,8 +276,7 @@ export async function POST(req: Request) {
     });
 
   } catch (error: unknown) {
-    console.error("Proses Ekstraksi Error:", error);
-    const message = error instanceof Error ? error.message : "Terjadi kesalahan internal saat pemrosesan.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    safeLogError("ProcessRoute", error);
+    return NextResponse.json({ error: "Terjadi kesalahan internal saat pemrosesan." }, { status: 500 });
   }
 }

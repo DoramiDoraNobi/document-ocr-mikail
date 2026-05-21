@@ -6,10 +6,13 @@ import { v4 as uuidv4 } from "uuid";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { getEnv } from "@/lib/env";
+import { getRequestContext } from "@cloudflare/next-on-pages";
+import { checkRateLimit, RATE_LIMITS, safeLogError } from "@/lib/security";
+import { recordAudit, getClientIP } from "@/lib/audit";
 
 export async function POST(req: Request) {
   try {
-    const { fileType, fileSize } = await req.json();
+    const { fileType, fileSize } = await req.json() as any;
 
     // 1. Keamanan: Cek tipe file (hanya izinkan image dan pdf)
     const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
@@ -29,6 +32,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const userId = user.userId;
+
+    // 4. Keamanan: Rate limiting — max 20 upload per menit per user
+    const { env } = getRequestContext();
+    const db = env.DB;
+    if (db) {
+      const rateCheck = await checkRateLimit(
+        db, userId, "upload",
+        RATE_LIMITS.upload.maxRequests, RATE_LIMITS.upload.windowSeconds
+      );
+      if (!rateCheck.allowed) {
+        return NextResponse.json(
+          { error: "Terlalu banyak upload. Silakan tunggu sebentar." },
+          { status: 429, headers: { "Retry-After": String(rateCheck.resetAt - Math.floor(Date.now() / 1000)) } }
+        );
+      }
+    }
 
     // 3. Keamanan: Randomisasi nama file (mencegah overwrite/path traversal)
     const fileId = uuidv4();
@@ -63,15 +82,29 @@ export async function POST(req: Request) {
       Bucket: R2_BUCKET_NAME,
       Key: fileKey,
       ContentType: fileType,
+      ContentLength: fileSize, // Gunakan ukuran asli file agar signature S3 cocok
     });
 
     // Generate Presigned URL berlaku untuk 5 menit (300 detik)
     const uploadUrl = await getSignedUrl(S3, command, { expiresIn: 300 });
 
+    // Audit log: rekam permintaan upload
+    if (db) {
+      const clientIP = getClientIP(req);
+      recordAudit(db, {
+        userId,
+        action: "upload",
+        targetType: "document",
+        targetId: fileId,
+        details: `fileType=${fileType}, fileSize=${fileSize}`,
+        ipAddress: clientIP,
+      });
+    }
+
     return NextResponse.json({ uploadUrl, fileKey, fileId });
   } catch (error) {
-    console.error("Upload Route Error:", error);
-    // 4. Keamanan: Sembunyikan error detail dari response
+    safeLogError("UploadRoute", error);
+    // 5. Keamanan: Sembunyikan error detail dari response
     return NextResponse.json({ error: "Terjadi kesalahan internal." }, { status: 500 });
   }
 }

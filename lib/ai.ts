@@ -1,4 +1,5 @@
 import { getEnv } from "./env";
+import { safeLogError } from "./security";
 
 export async function extractDocumentData(base64Image: string, mimeType: string = "image/jpeg", customSchema?: string) {
   const systemPrompt = `
@@ -102,15 +103,15 @@ ${dynamicFields},
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.warn("Qwen-VL failed or rate-limited. Upstream Error:", errorText);
-      throw new Error(`Rate limit or error: ${response.status}`);
+      safeLogError("QwenVL", errorText);
+      throw new Error(`Model utama error: ${response.status}`);
     }
 
     const data = await response.json();
     return JSON.parse(data.choices[0].message.content);
 
   } catch (error) {
-    console.warn("Memulai fallback otomatis menggunakan google/gemini-2.5-flash karena Qwen-VL bermasalah...", error);
+    console.warn("Fallback ke google/gemini-2.5-flash...");
     
     // Fallback: Gemini 2.5 Flash
     const fallbackResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -139,7 +140,7 @@ ${dynamicFields},
 
     if (!fallbackResponse.ok) {
       const errorText = await fallbackResponse.text();
-      console.error("OpenRouter Fallback API Error:", errorText);
+      safeLogError("GeminiFallback", errorText);
       throw new Error("Gagal mengekstrak data menggunakan AI (Model Utama & Fallback gagal)");
     }
 
@@ -147,7 +148,7 @@ ${dynamicFields},
     try {
       return JSON.parse(fallbackData.choices[0].message.content);
     } catch (e) {
-      console.error("JSON parse error from fallback AI:", e);
+      safeLogError("GeminiFallbackParse", e);
       throw new Error("Format JSON tidak valid dari AI");
     }
   }
