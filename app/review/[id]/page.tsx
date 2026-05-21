@@ -50,7 +50,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         if (!res.ok) {
           throw new Error("Gagal mengambil data dokumen");
         }
-        const data = await res.json();
+        const data = await res.json() as any;
         const doc = data.document;
 
         if (doc) {

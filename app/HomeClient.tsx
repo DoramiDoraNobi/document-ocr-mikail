@@ -46,7 +46,7 @@ export default function Home() {
           throw new Error("Gagal mengunggah file");
         }
 
-        const { fileKey } = await res.json();
+        const { fileKey } = await res.json() as any;
 
         setStatus(`[${i + 1}/${files.length}] Memproses dengan AI... (Bisa memakan waktu)`);
         
