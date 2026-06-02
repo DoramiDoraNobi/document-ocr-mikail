@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import imageCompression from "browser-image-compression";
 
 export default function Home() {
   const [files, setFiles] = useState<File[]>([]);
@@ -31,11 +32,28 @@ export default function Home() {
       
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        setStatus(`[${i + 1}/${files.length}] Meminta akses untuk: ${file.name}...`);
+        let fileToUpload = file;
+
+        // Kompresi jika file berupa gambar
+        if (file.type.startsWith("image/")) {
+          setStatus(`[${i + 1}/${files.length}] Mengkompresi gambar otomatis: ${file.name}...`);
+          try {
+            const options = {
+              maxSizeMB: 1.5,
+              maxWidthOrHeight: 1920,
+              useWebWorker: true,
+            };
+            fileToUpload = await imageCompression(file, options);
+          } catch (e) {
+            console.warn("Kompresi gagal, melanjutkan upload file asli", e);
+          }
+        }
+
+        setStatus(`[${i + 1}/${files.length}] Meminta akses untuk mengunggah...`);
         
         // 1 & 2. Upload file langsung ke API yang akan menyimpannya ke R2
         const formData = new FormData();
-        formData.append("file", file);
+        formData.append("file", fileToUpload);
 
         const res = await fetch("/api/upload", {
           method: "POST",
@@ -95,8 +113,8 @@ export default function Home() {
             <svg style={{ width: '48px', height: '48px' }} className="text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
-            <span className="text-gray-600 font-medium text-sm md:text-base">Klik untuk memilih atau seret gambar ke sini</span>
-            <span className="text-gray-400 text-xs mt-2">Format: JPG, PNG, WEBP, PDF (Max 5MB per file)</span>
+            <span className="text-gray-600 font-medium text-sm md:text-base">Klik untuk memilih atau seret dokumen ke sini</span>
+            <span className="text-gray-400 text-xs mt-2">Format: JPG, PNG, WEBP, PDF (Maks 15MB, foto dari HP akan dikompresi otomatis)</span>
             <input type="file" multiple style={{ display: 'none' }} accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleFileChange} />
           </label>
           

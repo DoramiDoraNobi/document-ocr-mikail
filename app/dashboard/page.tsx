@@ -46,6 +46,8 @@ type DocumentRow = {
   reference_number?: string | null;
   is_duplicate?: number | null;
   created_at?: string | null;
+  final_json?: string | null;
+  raw_ai_json?: string | null;
 };
 
 function coerceSortKey(input: unknown): DashboardSortKey {
@@ -211,6 +213,12 @@ export default async function DashboardPage({
               >
                 + Upload Baru
               </Link>
+              <Link
+                href="/templates"
+                className="inline-flex h-9 items-center rounded-lg bg-gray-100 px-3 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-200 border border-gray-200"
+              >
+                Kelola Template
+              </Link>
               <ExportModal documentTypes={documentTypes} vendorList={vendorList} />
               <LogoutButton />
             </div>
@@ -273,6 +281,14 @@ export default async function DashboardPage({
                   const createdAt = formatCreatedAt(doc.created_at);
                   const typeBadgeClass = getTypeBadgeClass(doc.document_type);
 
+                  let isSuspicious = false;
+                  try {
+                    const finalData = JSON.parse(doc.final_json || doc.raw_ai_json || "{}");
+                    if (finalData?.fraud_analysis?.is_suspicious || finalData?.fraud_analysis?.value?.is_suspicious) {
+                      isSuspicious = true;
+                    }
+                  } catch (e) {}
+
                   const statusClass =
                     doc.status === "VERIFIED"
                       ? "bg-green-50 text-green-700 ring-green-200"
@@ -308,6 +324,11 @@ export default async function DashboardPage({
                           {doc.is_duplicate === 1 && (
                             <span className="inline-flex items-center rounded-md bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700 ring-1 ring-inset ring-red-200" title="Kemungkinan Duplikat">
                               ⚠️ DUPLIKAT
+                            </span>
+                          )}
+                          {isSuspicious && (
+                            <span className="inline-flex items-center rounded-md bg-orange-100 px-2 py-1 text-[10px] font-bold text-orange-800 ring-1 ring-inset ring-orange-300" title="Terdeteksi Anomali / Fraud">
+                              ⚠️ ANOMALI
                             </span>
                           )}
                         </div>
