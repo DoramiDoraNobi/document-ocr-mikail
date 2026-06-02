@@ -155,8 +155,10 @@ export const RATE_LIMITS = {
 export function safeLogError(context: string, error: unknown): void {
   if (error instanceof Error) {
     console.error(`[${context}] ${error.name}: ${error.message}`);
+  } else if (typeof error === "string") {
+    console.error(`[${context}] Error: ${error}`);
   } else {
-    console.error(`[${context}] Non-Error thrown:`, typeof error);
+    console.error(`[${context}] Non-Error thrown (${typeof error}):`, error);
   }
 }
 
