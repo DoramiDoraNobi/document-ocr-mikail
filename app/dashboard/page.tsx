@@ -7,7 +7,6 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import SortSelect, { type DashboardSortKey } from "./SortSelect";
 
-export const runtime = "edge";
 
 // Dummy data fallback if DB fails
 const dummyDocuments = [

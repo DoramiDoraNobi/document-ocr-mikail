@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import LogoutButton from "@/components/LogoutButton";
 
-export const runtime = "edge";
 
 const CATEGORIES = [
   "Makanan & Minuman",

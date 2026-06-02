@@ -2,7 +2,6 @@ import { getRequestContext } from "@cloudflare/next-on-pages";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 
-export const runtime = "edge";
 
 export async function GET(
   req: Request,

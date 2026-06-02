@@ -3,7 +3,6 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import HomeClient from "./HomeClient";
 
-export const runtime = "edge";
 
 export default async function Page() {
   const reqHeaders = await headers();
