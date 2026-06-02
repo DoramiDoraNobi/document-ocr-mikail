@@ -1,12 +1,12 @@
 
-import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { safeLogError } from "@/lib/security";
 
 export async function GET(req: Request) {
   try {
-    const { env } = getRequestContext();
+    const { env } = getCloudflareContext();
     const db = env.DB;
 
     if (!db) {

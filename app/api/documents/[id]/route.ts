@@ -1,5 +1,5 @@
 
-import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { safeLogError, sanitizeInput } from "@/lib/security";
@@ -14,7 +14,7 @@ export async function GET(
     const resolvedParams = await params;
     const id = resolvedParams.id;
 
-    const { env } = getRequestContext();
+    const { env } = getCloudflareContext();
     const db = env.DB;
 
     if (!db) {
@@ -85,7 +85,7 @@ export async function PUT(
   try {
     const resolvedParams = await params;
     const id = resolvedParams.id;
-    const { env } = getRequestContext();
+    const { env } = getCloudflareContext();
     const db = env.DB;
 
     if (!db) {
@@ -157,7 +157,7 @@ export async function DELETE(
   try {
     const resolvedParams = await params;
     const id = resolvedParams.id;
-    const { env } = getRequestContext();
+    const { env } = getCloudflareContext();
     const db = env.DB;
 
     if (!db) {

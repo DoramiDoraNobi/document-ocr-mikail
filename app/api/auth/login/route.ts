@@ -1,6 +1,6 @@
 
 import { NextResponse } from "next/server";
-import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { verifyPassword, createToken, createAuthCookie } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS, safeLogError, sanitizeInput } from "@/lib/security";
 import { recordAudit, getClientIP } from "@/lib/audit";
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email dan password wajib diisi." }, { status: 400 });
     }
 
-    const { env } = getRequestContext();
+    const { env } = getCloudflareContext();
     const db = env.DB;
 
     if (!db) {

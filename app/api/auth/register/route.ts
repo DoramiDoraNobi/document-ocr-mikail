@@ -1,6 +1,6 @@
 
 import { NextResponse } from "next/server";
-import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { hashPassword, createToken, createAuthCookie } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
 import { safeLogError, sanitizeInput } from "@/lib/security";
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Password harus minimal 8 karakter." }, { status: 400 });
     }
 
-    const { env } = getRequestContext();
+    const { env } = getCloudflareContext();
     const db = env.DB;
 
     if (!db) {

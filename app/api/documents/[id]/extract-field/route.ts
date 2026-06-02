@@ -1,7 +1,7 @@
 
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { extractSingleField } from "@/lib/ai";
 import { validateMagicBytes } from "@/lib/security";
 
@@ -17,7 +17,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: "fieldName is required" }, { status: 400 });
     }
 
-    const { env } = getRequestContext();
+    const { env } = getCloudflareContext();
     const db = env.DB;
     const bucket = env.BUCKET;
 

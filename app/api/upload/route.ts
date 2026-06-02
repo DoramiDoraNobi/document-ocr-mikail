@@ -2,7 +2,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { checkRateLimit, RATE_LIMITS, safeLogError } from "@/lib/security";
 import { recordAudit, getClientIP } from "@/lib/audit";
 
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     const userId = user.userId;
 
     // 5. Keamanan: Rate limiting — max 20 upload per menit per user
-    const { env } = getRequestContext();
+    const { env } = getCloudflareContext();
     const db = env.DB;
     if (db) {
       const rateCheck = await checkRateLimit(

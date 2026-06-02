@@ -18,7 +18,7 @@ declare global {
   }
 }
 
-declare module "@cloudflare/next-on-pages" {
+declare module "@opennextjs/cloudflare" {
   interface CloudflareEnv {
     DB: D1Database;
     BUCKET: R2Bucket;

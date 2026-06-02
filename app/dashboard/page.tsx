@@ -1,4 +1,4 @@
-import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import ExportModal from "./ExportModal";
 import LogoutButton from "@/components/LogoutButton";
@@ -126,7 +126,7 @@ export default async function DashboardPage({
   const sort = coerceSortKey(resolvedSearchParams.sort);
 
   try {
-    const { env } = getRequestContext();
+    const { env } = getCloudflareContext();
     const db = env.DB;
     if (db) {
       const orderBy = getOrderBy(sort);

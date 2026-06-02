@@ -1,9 +1,9 @@
-import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 export function getEnv(key: string): string | undefined {
-  // 1. Coba ambil dari Cloudflare Pages / Workers environment (getRequestContext)
+  // 1. Coba ambil dari Cloudflare Pages / Workers environment (getCloudflareContext)
   try {
-    const { env } = getRequestContext();
+    const { env } = getCloudflareContext();
     if (env && (env as Record<string, any>)[key]) {
       return (env as Record<string, any>)[key];
     }

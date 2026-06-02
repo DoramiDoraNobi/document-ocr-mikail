@@ -1,4 +1,4 @@
-import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 
@@ -11,7 +11,7 @@ export async function GET(
     const resolvedParams = await params;
     const id = resolvedParams.id;
     
-    const { env } = getRequestContext();
+    const { env } = getCloudflareContext();
     const db = env.DB;
     if (!db) {
       return new Response("Koneksi database tidak tersedia.", { status: 500 });
