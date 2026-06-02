@@ -205,58 +205,6 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
           ) : (
             <div className="relative inline-block max-w-full max-h-full">
               <img src={viewUrl} alt="Dokumen Asli" className="max-w-full max-h-[85vh] w-auto h-auto rounded-lg shadow-md block" />
-              <svg 
-                className="absolute top-0 left-0 w-full h-full pointer-events-none rounded-lg z-10" 
-                viewBox="0 0 1000 1000" 
-                preserveAspectRatio="none"
-              >
-                {Object.keys(formData).map(key => {
-                  if (key === "line_items" || key === "items" || key === "status") return null;
-                  const field = formData[key] as any;
-                  if (field && typeof field === "object" && field.box && typeof field.box === "object") {
-                    const { x, y, w, h } = field.box;
-                    if (x === undefined || y === undefined || w === undefined || h === undefined) return null;
-                    
-                    const confidence = field.confidence || 0;
-                    
-                    let strokeColor = "rgba(220, 38, 38, 0.9)"; // Red
-                    let fillColor = "rgba(220, 38, 38, 0.2)";
-                    if (confidence >= 0.8) {
-                      strokeColor = "rgba(22, 163, 74, 0.9)"; // Green
-                      fillColor = "rgba(22, 163, 74, 0.2)";
-                    } else if (confidence >= 0.5) {
-                      strokeColor = "rgba(202, 138, 4, 0.9)"; // Yellow
-                      fillColor = "rgba(202, 138, 4, 0.2)";
-                    }
-
-                    return (
-                      <g key={key}>
-                        <rect 
-                          x={x}
-                          y={y}
-                          width={w}
-                          height={h}
-                          stroke={strokeColor}
-                          strokeWidth="4"
-                          fill={fillColor}
-                          rx="4"
-                        />
-                        <text 
-                          x={x} 
-                          y={Math.max(20, y - 10)} 
-                          fill={strokeColor} 
-                          fontSize="24" 
-                          fontWeight="bold"
-                          style={{ textShadow: "1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white" }}
-                        >
-                          {key}
-                        </text>
-                      </g>
-                    );
-                  }
-                  return null;
-                })}
-              </svg>
             </div>
           )
         ) : (
